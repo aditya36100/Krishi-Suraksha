@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "Krishi Suraksha",
+    "slug": "krishi-suraksha-farmer",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#15803d"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#15803d"
+      },
+      "package": "com.krishisuraksha.farmer"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

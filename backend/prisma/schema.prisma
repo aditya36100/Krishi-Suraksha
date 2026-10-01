@@ -1,0 +1,132 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  FARMER
+  BUYER
+  ADMIN
+}
+
+enum OrderStatus {
+  PLACED
+  ACCEPTED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+model User {
+  id            String         @id @default(uuid())
+  phoneNumber   String         @unique
+  email         String?        @unique
+  passwordHash  String?
+  role          Role           @default(FARMER)
+  name          String
+  preferredLang String         @default("en") // "en" | "kn"
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  farmerProfile FarmerProfile?
+  buyerProfile  BuyerProfile?
+  orders        Order[]        @relation("BuyerOrders")
+  notifications Notification[]
+}
+
+model FarmerProfile {
+  id       String        @id @default(uuid())
+  userId   String        @unique
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  state    String
+  district String
+  village  String?
+  upiId    String?
+  listings CropListing[]
+}
+
+model BuyerProfile {
+  id              String  @id @default(uuid())
+  userId          String  @unique
+  user            User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessName    String?
+  businessType    String? // Hotel, Restaurant, Supermarket, Exporter
+  shippingAddress String?
+  gstin           String?
+}
+
+model CropListing {
+  id                  String        @id @default(uuid())
+  farmerId            String
+  farmer              FarmerProfile @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  cropName            String        // Avocado, Dragon Fruit, Pomegranate, Coffee, Banana
+  variety             String?
+  totalQuantityKg     Float
+  availableQuantityKg Float
+  askingPricePerKg    Float
+  suggestedMinPrice   Float?        // From ML Price advisory service
+  suggestedMaxPrice   Float?        // From ML Price advisory service
+  expectedHarvestDate DateTime
+  location            String
+  photoUrl            String?
+  isActive            Boolean       @default(true)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  orders              Order[]
+
+  @@index([cropName, isActive])
+}
+
+model Order {
+  id              String      @id @default(uuid())
+  orderNumber     String      @unique
+  buyerId         String
+  buyer           User        @relation("BuyerOrders", fields: [buyerId], references: [id])
+  listingId       String
+  listing         CropListing @relation(fields: [listingId], references: [id])
+  quantityKg      Float
+  pricePerKg      Float
+  totalAmount     Float
+  status          OrderStatus @default(PLACED)
+  deliveryAddress String
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  payment         Payment?
+}
+
+model Payment {
+  id                String        @id @default(uuid())
+  orderId           String        @unique
+  order             Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  razorpayOrderId   String        @unique
+  razorpayPaymentId String?
+  razorpaySignature String?
+  amount            Float
+  currency          String        @default("INR")
+  status            PaymentStatus @default(PENDING)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
