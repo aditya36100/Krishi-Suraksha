@@ -5,23 +5,27 @@ const {
   getMyListings,
   getActiveListings,
   getListingById,
-  updateListing
+  updateListing,
+  deleteListing
 } = require('../controllers/listingController');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
-// Public route: Browse active listings with filters & pagination
+// 1. GET /api/listings: Public route to browse active listings with filters & pagination
 router.get('/', getActiveListings);
 
-// Farmer only: View farmer's own listings (Must be defined before /:id)
+// 2. GET /api/listings/mine: Farmer-only route for own listings (Must be defined BEFORE /:id to prevent route shadowing)
 router.get('/mine', requireAuth, requireRole('FARMER'), getMyListings);
 
-// Public / Owner: Single listing details (Active listings public; inactive restricted to creator)
+// 3. GET /api/listings/:id: Public route for single listing details (Inactive visible only to creator)
 router.get('/:id', getListingById);
 
-// Farmer only: Create a new crop listing
+// 4. POST /api/listings: Farmer-only route to create a crop listing
 router.post('/', requireAuth, requireRole('FARMER'), createListing);
 
-// Farmer only: Update own crop listing or toggle active status
-router.put('/:id', requireAuth, requireRole('FARMER'), updateListing);
+// 5. PATCH /api/listings/:id: Farmer-only route to update own listing (Atomic quantity adjustment)
+router.patch('/:id', requireAuth, requireRole('FARMER'), updateListing);
+
+// 6. DELETE /api/listings/:id: Farmer-only route to soft-delete own listing (isActive = false)
+router.delete('/:id', requireAuth, requireRole('FARMER'), deleteListing);
 
 module.exports = router;
