@@ -1,0 +1,52 @@
+"""Escrow state machine + tamper-evident (hash-chained) audit ledger. Demo: no real money moves."""
+import hashlib, json, datetime
+from .db import conn
+
+FEE = 0.02
+GENESIS = "0" * 64
+ALLOWED = {
+    "PLACED": {"FUNDED", "CANCELLED"},
+    "FUNDED": {"HARVESTED", "REFUNDED", "DISPUTED"},
+    "HARVESTED": {"SHIPPED", "DISPUTED"},
+    "SHIPPED": {"DELIVERED", "DISPUTED"},
+    "DELIVERED": {"RELEASED", "DISPUTED"},
+    "DISPUTED": {"RELEASED", "REFUNDED"},
+}
+
+def _log(c, oid, event, detail):
+    row = c.execute("SELECT hash FROM ledger ORDER BY id DESC LIMIT 1").fetchone()
+    prev = row["hash"] if row else GENESIS
+    ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    d = json.dumps(detail, sort_keys=True)
+    h = hashlib.sha256(json.dumps([oid, event, d, ts, prev]).encode()).hexdigest()
+    c.execute("INSERT INTO ledger(order_id,event,detail,ts,prev_hash,hash) VALUES(?,?,?,?,?,?)",
+              (oid, event, d, ts, prev, h))
+
+def start(oid):
+    with conn() as c:
+        o = c.execute("SELECT * FROM orders WHERE id=?", (oid,)).fetchone()
+        _log(c, oid, "PLACED", {"amount": o["amount"], "deposit_pct": o["deposit_pct"]})
+
+def move(oid, new, detail=None):
+    with conn() as c:
+        o = c.execute("SELECT * FROM orders WHERE id=?", (oid,)).fetchone()
+        if not o:
+            raise ValueError("no such order")
+        if new not in ALLOWED.get(o["state"], set()):
+            raise ValueError(f"{o['state']} -> {new} not allowed")
+        c.execute("UPDATE orders SET state=? WHERE id=?", (new, oid))
+        d = dict(detail or {}, amount=o["amount"])
+        if new == "RELEASED":
+            d.update(fee=round(o["amount"] * FEE, 2), farmer_gets=round(o["amount"] * (1 - FEE), 2))
+        _log(c, oid, new, d)
+
+def verify_chain():
+    """Recompute every hash; returns (True, None) or (False, first_bad_ledger_id)."""
+    prev = GENESIS
+    with conn() as c:
+        for r in c.execute("SELECT * FROM ledger ORDER BY id"):
+            h = hashlib.sha256(json.dumps([r["order_id"], r["event"], r["detail"], r["ts"], prev]).encode()).hexdigest()
+            if r["prev_hash"] != prev or r["hash"] != h:
+                return False, r["id"]
+            prev = r["hash"]
+    return True, None

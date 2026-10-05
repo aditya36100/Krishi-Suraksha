@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+krishi.db
+data/prices.csv
+data/SYNTHETIC
