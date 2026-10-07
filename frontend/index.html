@@ -19,10 +19,10 @@ label{display:block;font-size:12px;color:var(--mu);margin:8px 0 3px}input,select
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;background:var(--tx);color:var(--bg);padding:10px 16px;border-radius:20px;display:none;z-index:9;max-width:90%}
 svg text{fill:var(--mu);font-size:10px}code{background:var(--pr2);padding:2px 6px;border-radius:4px}.lg{font:12px monospace;color:var(--mu);margin-top:6px}
 </style></head><body>
-<header><h1>🌱 Krishi Suraksha</h1><select id="lang" style="width:auto" onchange="L=this.value;go(tab)"><option value="en">English</option><option value="kn">ಕನ್ನಡ</option></select></header>
+<header><h1>🌱 Krishi Suraksha</h1><div style="display:flex;gap:8px"><select id="role" style="width:auto" onchange="setRole(this.value)"><option value="farmer">View as: Farmer</option><option value="buyer">View as: Buyer</option><option value="admin">View as: Admin</option></select><select id="lang" style="width:auto" onchange="L=this.value;go(tab)"><option value="en">English</option><option value="kn">ಕನ್ನಡ</option></select></div></header>
 <div id="badge"></div><nav id="nav"></nav><main id="app"></main><div id="toast"></div>
 <script>
-const $=s=>document.querySelector(s);let L="en",tab="farmer",U=[],M={},fid=0,bid=0,pc="",ph=2,fc="",fl="";
+const $=s=>document.querySelector(s);let R="farmer",L="en",tab="farmer",U=[],M={},fid=0,bid=0,pc="",ph=2,fc="",fl="";
 const TT={en:{farmer:"Farmer app",buyer:"Buyer portal",orders:"Orders",price:"Fair-price guide",admin:"Admin",add:"List a crop",crop:"Crop",qty:"Quantity (kg)",date:"Expected harvest",pr:"Your price (₹/kg)",sug:"Suggested price",save:"Publish listing",my:"My listings",myo:"Orders for me"},
 kn:{farmer:"ರೈತ ಆ್ಯಪ್",buyer:"ಖರೀದಿದಾರ",orders:"ಆರ್ಡರ್‌ಗಳು",price:"ನ್ಯಾಯ ಬೆಲೆ",admin:"ಆಡ್ಮಿನ್",add:"ಬೆಳೆ ಸೇರಿಸಿ",crop:"ಬೆಳೆ",qty:"ಪ್ರಮಾಣ (ಕೆಜಿ)",date:"ಕೊಯ್ಲು ದಿನಾಂಕ",pr:"ನಿಮ್ಮ ಬೆಲೆ (₹/ಕೆಜಿ)",sug:"ಸೂಚಿತ ಬೆಲೆ",save:"ಪಟ್ಟಿ ಪ್ರಕಟಿಸಿ",my:"ನನ್ನ ಪಟ್ಟಿಗಳು",myo:"ನನ್ನ ಆರ್ಡರ್‌ಗಳು"}};
 const t=k=>TT[L][k],fm=n=>"₹"+Math.round(n).toLocaleString("en-IN"),fk=n=>"₹"+(+n).toFixed(1);
@@ -32,32 +32,41 @@ async function api(p,m="GET",b){const r=await fetch(p,{method:m,headers:{"Conten
  if(!r.ok)throw new Error(typeof j.detail=="string"?j.detail:JSON.stringify(j.detail||r.statusText));return j}
 const ST=["PLACED","FUNDED","HARVESTED","SHIPPED","DELIVERED","RELEASED"];
 const NX={PLACED:["fund","cancel"],FUNDED:["harvest","refund","dispute"],HARVESTED:["ship","dispute"],SHIPPED:["deliver","dispute"],DELIVERED:["release","dispute"],DISPUTED:["release","refund"]};
-const LB={fund:"Pay deposit (demo)",cancel:"Cancel",harvest:"Mark harvested",ship:"Mark shipped",deliver:"Confirm delivery",release:"Release payment",dispute:"Raise dispute",refund:"Refund"};
+const LB={fund:"Pay deposit (demo)",cancel:"Cancel",harvest:"Mark harvested",ship:"Mark shipped",deliver:"Confirm delivery",release:"Release payment",dispute:"Raise dispute",refund:"Refund buyer",undo:"↩ Undo last step"};
 const noSeed=()=>`<div class="card">No users yet. In the terminal run <code>python seed.py</code>, then refresh.</div>`;
-const prem=l=>l.mandi_ref?`<span class="up">${(l.price/l.mandi_ref-1)>=0?"+":""}${Math.round((l.price/l.mandi_ref-1)*100)}%</span> vs forecast mandi ${fk(l.mandi_ref)}`:"no mandi reference";
+const prem=l=>l.mandi_ref?`<span class="up">${(l.price/l.mandi_ref-1)>=0?"+":""}${Math.round((l.price/l.mandi_ref-1)*100)}%</span>${R=="buyer"?" vs market benchmark":" vs forecast mandi "+fk(l.mandi_ref)}`:"no mandi reference";
 const opt=(a,s)=>a.map(x=>`<option ${x==s?"selected":""}>${x}</option>`).join("");
 function ordCard(o){const i=Math.max(0,ST.indexOf(o.state)),bad=["DISPUTED","REFUNDED","CANCELLED"].includes(o.state);
 return`<div class="card"><div class="row" style="align-items:center"><div><h3>#${o.id} · ${o.crop} · ${o.qty} kg</h3><div class="mu">${o.buyer} → ${o.farmer}</div></div><div><b>${fm(o.amount)}</b> <span class="tag">${o.state}</span></div></div>
-<div class="steps">${ST.map((_,j)=>`<i class="${j<=i&&!bad?"d":""}"></i>`).join("")}</div>${(NX[o.state]||[]).map(a=>`<button class="b s" onclick="act(${o.id},'${a}')">${LB[a]}</button>`).join("")}<button class="b s" onclick="led(${o.id})">Audit ledger</button><div id="lg${o.id}" class="lg"></div></div>`}
+<div class="steps">${ST.map((_,j)=>`<i class="${j<=i&&!bad?"d":""}"></i>`).join("")}</div>${btns(o)}<button class="b s" onclick="led(${o.id})">Audit ledger</button><div id="lg${o.id}" class="lg"></div></div>`}
+const PERM={farmer:["harvest","ship","cancel","refund","dispute"],buyer:["fund","cancel","deliver","release","dispute"],admin:["release","refund"]};
+const UNDOR={HARVESTED:"farmer",SHIPPED:"farmer",DELIVERED:"buyer"};
+function btns(o){let a=(NX[o.state]||[]).filter(x=>PERM[R].includes(x)&&(o.state=="DISPUTED"?R=="admin":R!="admin"));
+ if(UNDOR[o.state]==R)a.push("undo");
+ let h=a.map(x=>`<button class="b s" onclick="act(${o.id},'${x}')">${LB[x]}</button>`).join("");
+ if(R=="admin"&&o.state=="DISPUTED")h+=`<button class="b s" onclick="fault(${o.id},${o.farmer_id})">Fault: farmer</button><button class="b s" onclick="fault(${o.id},${o.buyer_id})">Fault: buyer</button>`;
+ return h}
+async function fault(id,p){try{await api(`/orders/${id}/fault/${p}`,"POST");toast("Fault recorded on that party's trust score")}catch(e){toast(e.message)}}
 async function act(id,a){try{await api(`/orders/${id}/${a}`,"POST");toast("Order #"+id+": "+a+" done");go(tab)}catch(e){toast(e.message)}}
 async function led(id){const r=await api(`/orders/${id}/ledger`);$("#lg"+id).innerHTML=r.map(e=>`${e.event} · ${e.ts.slice(0,19)} · hash ${e.hash.slice(0,10)} ← prev ${e.prev_hash.slice(0,10)}`).join("<br>")}
 const V={},after={};
 V.farmer=async()=>{const F=U.filter(u=>u.role=="farmer");if(!F.length)return noSeed();const[ls,os]=await Promise.all([api("/listings"),api("/orders")]);
 return`<div class="card"><label>Logged in as</label><select onchange="fid=+this.value;go('farmer')">${F.map(f=>`<option value="${f.id}" ${f.id==fid?"selected":""}>${f.name} · ${f.loc}</option>`).join("")}</select></div>
 <div class="card"><h2>${t("add")}</h2><div class="row"><div><label>${t("crop")}</label><select id="c" onchange="sug()">${opt(M.crops)}</select></div><div><label>${t("qty")}</label><input id="q" type="number" value="100"></div><div><label>${t("date")}</label><input id="dt" type="date" value="${dd(14)}" onchange="sug()"></div><div><label>${t("pr")}</label><input id="p" type="number" step="0.1"></div></div><div id="sg" class="mu" style="margin-top:8px"></div><button class="b" onclick="addL()">${t("save")}</button></div>
-<h2>${t("my")}</h2><div class="grid">${ls.filter(l=>l.farmer_id==fid).map(l=>`<div class="card"><h3>${l.crop}</h3><div class="mu">${l.qty} kg left · harvest ${l.harvest_date}</div><div class="big">${fk(l.price)}/kg</div><div class="mu">${prem(l)}</div></div>`).join("")||"—"}</div>
+<h2>${t("my")}</h2><div class="grid">${ls.filter(l=>l.farmer_id==fid).map(l=>`<div class="card"><h3>${l.crop}</h3><div class="mu">${l.qty} kg left · harvest ${l.harvest_date}</div><div class="big">${fk(l.price)}/kg</div><div class="mu">${prem(l)}</div><button class="b s" onclick="wd(${l.id})">Withdraw listing</button></div>`).join("")||"—"}</div>
 <h2 style="margin-top:14px">${t("myo")}</h2>${os.filter(o=>o.farmer_id==fid).map(ordCard).join("")||"—"}`};
 after.farmer=()=>sug();
 async function sug(){const c=$("#c").value,d=$("#dt").value;try{const f=await api(`/price/${encodeURIComponent(c)}?harvest_date=${d}`);
  $("#sg").innerHTML=`${t("sug")}: <b class="up">${fk(f.suggested)}/kg</b> · expected mandi price at harvest ${fk(f.point)} (${f.coverage_target*100}% interval ${fk(f.lo)}–${fk(f.hi)})`;$("#p").value=f.suggested}catch(e){$("#sg").textContent=e.message}}
-async function addL(){try{const r=await api("/listings","POST",{farmer_id:fid,crop:$("#c").value,qty:+$("#q").value,harvest_date:$("#dt").value,price:+$("#p").value});toast("Listing published");go("farmer")}catch(e){toast(e.message)}}
+async function addL(){if(!confirm(`Publish ${$("#q").value} kg ${$("#c").value} at ₹${$("#p").value}/kg?`))return;try{const r=await api("/listings","POST",{farmer_id:fid,crop:$("#c").value,qty:+$("#q").value,harvest_date:$("#dt").value,price:+$("#p").value});toast("Listing published");go("farmer")}catch(e){toast(e.message)}}
+async function wd(id){if(!confirm("Withdraw this listing?"))return;try{await api("/listings/"+id,"DELETE");toast("Listing withdrawn");go("farmer")}catch(e){toast(e.message)}}
 V.buyer=async()=>{const B=U.filter(u=>u.role=="buyer");if(!B.length)return noSeed();const ls=await api(`/listings?crop=${encodeURIComponent(fc)}&loc=${encodeURIComponent(fl)}`);const locs=[...new Set(U.filter(u=>u.role=="farmer").map(u=>u.loc))];
 return`<div class="card"><div class="row"><div><label>Buying as</label><select onchange="bid=+this.value">${B.map(b=>`<option value="${b.id}" ${b.id==bid?"selected":""}>${b.name}</option>`).join("")}</select></div>
 <div><label>Crop</label><select onchange="fc=this.value;go('buyer')"><option value="">All crops</option>${opt(M.crops,fc)}</select></div><div><label>Location</label><select onchange="fl=this.value;go('buyer')"><option value="">All locations</option>${opt(locs,fl)}</select></div></div></div>
 <div class="grid">${ls.map(l=>{const r=l.farmer_reliability;return`<div class="card"><h3>${l.crop} <span class="tag">${l.loc}</span></h3><div class="mu">${l.farmer_name} · trust ${r.lower} (${r.n} deals) · harvest ${l.harvest_date}<br>${l.qty} kg available</div><div class="big">${fk(l.price)}/kg</div><div class="mu">${prem(l)}</div>
 <label>Order qty (kg)</label><input id="oq${l.id}" type="number" value="25"><label>Deposit into escrow</label><select id="dp${l.id}"><option value="0.3">30%</option><option value="0.5">50%</option><option value="1">100%</option></select><button class="b" onclick="order(${l.id})">Order &amp; pay deposit (demo)</button></div>`}).join("")||'<p class="mu">No listings match.</p>'}</div>`};
 async function order(id){try{const o=await api("/orders","POST",{listing_id:id,buyer_id:bid,qty:+$("#oq"+id).value,deposit_pct:+$("#dp"+id).value});await api(`/orders/${o.id}/fund`,"POST");toast("Deposit held in escrow (demo, no real money)");go("orders")}catch(e){toast(e.message)}}
-V.orders=async()=>`<h2>All orders</h2>${(await api("/orders")).map(ordCard).join("")||"—"}`;
+V.orders=async()=>{let os=await api("/orders");if(R=="buyer")os=os.filter(o=>o.buyer_id==bid);return`<h2>${R=="admin"?"All orders":"My orders"}</h2>${os.map(ordCard).join("")||"—"}`};
 const chart=(h,f)=>{const v=h.values,n=v.length,all=[...v,f.lo,f.hi],mx=Math.max(...all),mn=Math.min(...all),W=340,X=i=>30+i*(W-60)/(n-1+f.h_weeks),Y=x=>130-(x-mn)/((mx-mn)||1)*110,e=n-1+f.h_weeks;
 return`<svg viewBox="0 0 ${W} 150" width="100%"><polyline fill="none" stroke="var(--pr)" stroke-width="2" points="${v.map((y,i)=>X(i)+","+Y(y)).join(" ")}"/><line x1="${X(n-1)}" y1="${Y(v[n-1])}" x2="${X(e)}" y2="${Y(f.point)}" stroke="var(--wr)" stroke-dasharray="4 3" stroke-width="2"/><line x1="${X(e)}" y1="${Y(f.hi)}" x2="${X(e)}" y2="${Y(f.lo)}" stroke="var(--wr)" stroke-width="6" opacity=".45"/><circle cx="${X(e)}" cy="${Y(f.point)}" r="4" fill="var(--wr)"/><text x="2" y="${Y(mx)+4}">${Math.round(mx)}</text><text x="2" y="${Y(mn)+4}">${Math.round(mn)}</text><text x="30" y="148">52 weeks of mandi prices → forecast</text></svg>`};
 V.price=async()=>{const[h,f]=await Promise.all([api(`/price/${encodeURIComponent(pc)}/history?weeks=52`),api(`/price/${encodeURIComponent(pc)}?harvest_date=${dd(7*ph)}`)]);
@@ -70,7 +79,9 @@ return`<div class="stats"><div class="card"><div class="mu">Users</div><div clas
 <div class="card tw"><h2>Users</h2><table><tr><th>Name</th><th>Role</th><th>Location</th></tr>${U.map(u=>`<tr><td>${u.name}</td><td>${u.role}</td><td>${u.loc}</td></tr>`).join("")}</table></div>
 <div class="card tw"><h2>Orders</h2><table><tr><th>#</th><th>Crop</th><th>Farmer</th><th>Buyer</th><th>Kg</th><th>Value</th><th>State</th></tr>${os.map(o=>`<tr><td>${o.id}</td><td>${o.crop}</td><td>${o.farmer}</td><td>${o.buyer}</td><td>${o.qty}</td><td>${fm(o.amount)}</td><td>${o.state}</td></tr>`).join("")}</table></div>`};
 async function ver(){const r=await api("/ledger/verify");$("#vr").textContent=r.intact?"Ledger intact: yes":"TAMPERING detected at entry "+r.first_bad_id}
-async function go(x){tab=x;$("#nav").innerHTML=["farmer","buyer","orders","price","admin"].map(k=>`<button class="${k==x?"on":""}" onclick="go('${k}')">${t(k)}</button>`).join("");$("#app").innerHTML="Loading…";
+const TABS={farmer:["farmer","price"],buyer:["buyer","orders"],admin:["admin","orders"]};
+function setRole(r){R=r;go(TABS[r][0])}
+async function go(x){tab=x;$("#nav").innerHTML=TABS[R].map(k=>`<button class="${k==x?"on":""}" onclick="go('${k}')">${t(k)}</button>`).join("");$("#app").innerHTML="Loading…";
  try{$("#app").innerHTML=await V[x]();after[x]&&after[x]()}catch(e){$("#app").innerHTML=`<div class="card">Error: ${e.message}</div>`}}
 (async()=>{try{M=await api("/meta");U=await api("/users");fid=(U.find(u=>u.role=="farmer")||{}).id;bid=(U.find(u=>u.role=="buyer")||{}).id;pc=M.crops[0];
  $("#badge").className=M.synthetic?"w":"";$("#badge").textContent=M.synthetic?"⚠ SYNTHETIC price data – demo only, not real results":`✔ Real mandi price data · ${M.rows.toLocaleString()} rows · ${M.from} → ${M.to} · users, listings & orders are demo seed data`;go("farmer")}

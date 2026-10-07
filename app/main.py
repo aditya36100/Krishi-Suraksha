@@ -49,7 +49,7 @@ def add_listing(l: Listing):
 def listings(crop: str = "", loc: str = ""):
     with conn() as c:
         rows = c.execute("SELECT l.*, u.name farmer_name FROM listings l LEFT JOIN users u ON u.id=l.farmer_id "
-                         "WHERE l.qty>0 AND (?='' OR l.crop=?) AND (?='' OR l.loc=?)", (crop, crop, loc, loc)).fetchall()
+                         "WHERE l.qty>0 AND l.status='ACTIVE' AND (?='' OR l.crop=?) AND (?='' OR l.loc=?)", (crop, crop, loc, loc)).fetchall()
     out = []
     for r in rows:
         d = dict(r); d["farmer_reliability"] = reliability.score(r["farmer_id"]); out.append(d)
@@ -72,6 +72,12 @@ def place(o: Order):
 
 @app.post("/orders/{oid}/{action}")
 def act(oid: int, action: str):
+    if action == "undo":
+        try:
+            escrow.undo(oid)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        return {"id": oid, "state": "undone"}
     if action not in ACTIONS:
         raise HTTPException(404, "unknown action")
     new = ACTIONS[action]
@@ -160,3 +166,13 @@ def orders():
             "SELECT o.*, l.crop, l.price, l.farmer_id, fu.name farmer, bu.name buyer FROM orders o "
             "JOIN listings l ON l.id=o.listing_id LEFT JOIN users fu ON fu.id=l.farmer_id "
             "LEFT JOIN users bu ON bu.id=o.buyer_id ORDER BY o.id DESC")]
+
+
+@app.delete("/listings/{lid}")
+def withdraw(lid: int):
+    with conn() as c:
+        n = c.execute("SELECT COUNT(*) FROM orders WHERE listing_id=? AND state NOT IN ('CANCELLED','REFUNDED','RELEASED')", (lid,)).fetchone()[0]
+        if n:
+            raise HTTPException(400, f"{n} active order(s) on this listing - cancel or refund them first")
+        c.execute("UPDATE listings SET status='WITHDRAWN' WHERE id=?", (lid,))
+    return {"id": lid, "status": "WITHDRAWN"}

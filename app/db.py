@@ -18,3 +18,7 @@ def init():
             ts TEXT, prev_hash TEXT, hash TEXT);
         CREATE TABLE IF NOT EXISTS outcomes(id INTEGER PRIMARY KEY, order_id INT, party_id INT, kind TEXT, ok INT);
         """)
+        try:
+            c.execute("ALTER TABLE listings ADD COLUMN status TEXT DEFAULT 'ACTIVE'")
+        except sqlite3.OperationalError:
+            pass

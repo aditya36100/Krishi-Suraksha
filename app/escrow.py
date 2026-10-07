@@ -50,3 +50,23 @@ def verify_chain():
                 return False, r["id"]
             prev = r["hash"]
     return True, None
+
+
+UNDO = {"HARVESTED": "FUNDED", "SHIPPED": "HARVESTED", "DELIVERED": "SHIPPED"}
+UNDO_MINUTES = 15
+
+def undo(oid):
+    """Revert the latest non-money step within a short window. Appends an UNDO event; history is never deleted."""
+    with conn() as c:
+        o = c.execute("SELECT * FROM orders WHERE id=?", (oid,)).fetchone()
+        if not o:
+            raise ValueError("no such order")
+        prev = UNDO.get(o["state"])
+        if not prev:
+            raise ValueError(f"cannot undo from {o['state']} (money steps use cancel/refund/dispute)")
+        last = c.execute("SELECT ts FROM ledger WHERE order_id=? ORDER BY id DESC LIMIT 1", (oid,)).fetchone()
+        age = (datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.fromisoformat(last["ts"])).total_seconds() / 60
+        if age > UNDO_MINUTES:
+            raise ValueError(f"undo window ({UNDO_MINUTES} min) has passed - raise a dispute instead")
+        c.execute("UPDATE orders SET state=? WHERE id=?", (prev, oid))
+        _log(c, oid, "UNDO", {"from": o["state"], "to": prev})
